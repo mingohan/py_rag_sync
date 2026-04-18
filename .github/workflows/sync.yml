@@ -53,6 +53,7 @@ jobs:
 
       - name: Run sync
         env:
+          PYTHONUNBUFFERED: "1"
           QDRANT_URL: http://localhost:6333
           GOOGLE_APPLICATION_CREDENTIALS: credentials/py-rag-sa.json
           GOOGLE_DRIVE_TOKEN_PATH: credentials/token.json
