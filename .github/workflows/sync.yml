@@ -71,4 +71,5 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_SYNC_CHANNEL: ${{ secrets.SLACK_SYNC_CHANNEL }}
           PYTHONPATH: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}
         run: python -m sync.sync
