@@ -147,7 +147,8 @@ def fetch_google_drive_documents() -> list[Document]:
     print(f"  [google_drive] found {len(files)} files")
 
     docs = []
-    for f in files:
+    for i, f in enumerate(files, 1):
+        print(f"  [google_drive] ({i}/{len(files)}) {f['name']}")
         try:
             text = _read_file_text(service, f)
             if not text or not text.strip():
