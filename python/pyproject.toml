@@ -1,0 +1,67 @@
+[project]
+name = "py-rag"
+version = "0.1.0"
+description = "Python RAG service for internal AI assistant"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Web
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sse-starlette>=2.0.0",
+
+    # RAG
+    "llama-index>=0.12.0",
+    "llama-index-vector-stores-qdrant>=0.4.0",
+    "llama-index-embeddings-vertex>=0.3.0",
+    "llama-index-llms-vertex>=0.4.0",
+    "llama-index-postprocessor-cohere-rerank>=0.3.0",
+    "llama-index-readers-google>=0.5.0",
+    "llama-index-readers-gitlab>=0.3.0",
+    "llama-index-readers-trello>=0.1.0",
+    "llama-index-readers-slack>=0.1.0",
+
+    # Qdrant
+    "qdrant-client>=1.9.0",
+
+    # Sparse Embedding（BM25，本地執行）
+    "fastembed>=0.3.0",
+
+    # PDF 解析
+    "pymupdf4llm>=0.0.17",
+    "pymupdf>=1.24.0",
+
+    # Vertex AI
+    "google-cloud-aiplatform>=1.60.0",
+    "vertexai>=1.60.0",
+    "google-genai>=1.0.0",
+
+    # Slack
+    "slack-bolt>=1.21.0",
+
+    # 監控
+    "langfuse>=2.0.0",
+
+    # Re-ranking（免費方案，Cohere 沒 key 時用）
+    "flashrank>=0.2.0",
+
+    # Utils
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["python"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+]
