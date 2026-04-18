@@ -70,4 +70,4 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_SYNC_CHANNEL: ${{ secrets.SLACK_SYNC_CHANNEL }}
-        run: python -m sync.sync
+        run: PYTHONPATH=$GITHUB_WORKSPACE python -m sync.sync
