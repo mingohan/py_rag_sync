@@ -45,6 +45,12 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ./python/
 
+      - name: Debug
+        run: |
+          echo "workspace: $GITHUB_WORKSPACE"
+          ls -la $GITHUB_WORKSPACE
+          python -c "import sys; print(sys.path)"
+
       - name: Run sync
         env:
           QDRANT_URL: http://localhost:6333
