@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     google_cloud_project: str = "bobi-rag-489509"
     google_cloud_location: str = "us-central1"       # Embedding 用
     google_cloud_llm_location: str = "us-central1"   # LLM 用（gemini-3-flash-preview 需改為 global）
-    google_application_credentials: str = "/app/credentials/py-rag-sa.json"
+    google_application_credentials: str = ""
 
     # Embedding
     embedding_model: str = "gemini-embedding-2-preview"
