@@ -49,18 +49,7 @@ def _init_vertex():
 
 
 def _get_credentials():
-    import os
     from google.auth import default as google_auth_default
-    from google.oauth2 import service_account
-    sa_path = os.environ.get(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        settings.google_application_credentials,
-    )
-    if sa_path and os.path.exists(sa_path):
-        return service_account.Credentials.from_service_account_file(
-            sa_path,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
     creds, _ = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     return creds
 

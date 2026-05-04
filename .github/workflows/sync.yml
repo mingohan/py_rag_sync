@@ -30,8 +30,8 @@ jobs:
 
       - name: Write Google credentials
         run: |
-          mkdir -p credentials
-          echo '${{ secrets.GOOGLE_SA_JSON }}' > credentials/py-rag-sa.json
+          mkdir -p credentials ~/.config/gcloud
+          echo '${{ secrets.GOOGLE_SA_JSON }}' > ~/.config/gcloud/application_default_credentials.json
           echo '${{ secrets.GOOGLE_DRIVE_TOKEN_JSON }}' > credentials/token.json
 
       - name: Set up Python
@@ -55,7 +55,6 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           QDRANT_URL: http://localhost:6333
-          GOOGLE_APPLICATION_CREDENTIALS: credentials/py-rag-sa.json
           GOOGLE_DRIVE_TOKEN_PATH: credentials/token.json
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
           GOOGLE_CLOUD_LOCATION: us-central1
