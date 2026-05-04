@@ -4,10 +4,9 @@ Embedding：Vertex AI gemini-embedding-2-preview（via google-genai）
 - Sparse embedding：fastembed BM25（本地執行，不需 API）
 """
 import time
-import os
 from google import genai
 from google.genai import types as genai_types
-from google.oauth2 import service_account
+from google.auth import default as google_auth_default
 from fastembed import SparseTextEmbedding
 from llama_index.core.schema import TextNode
 from python.config import get_settings
@@ -33,14 +32,7 @@ def _get_sparse_model() -> SparseTextEmbedding:
 def _get_genai_client() -> genai.Client:
     global _genai_client
     if _genai_client is None:
-        sa_path = os.environ.get(
-            "GOOGLE_APPLICATION_CREDENTIALS",
-            settings.google_application_credentials,
-        )
-        creds = service_account.Credentials.from_service_account_file(
-            sa_path,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
+        creds, _ = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
         _genai_client = genai.Client(
             vertexai=True,
             project=settings.google_cloud_project,

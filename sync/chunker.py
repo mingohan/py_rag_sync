@@ -61,16 +61,11 @@ def chunk_pdf(file_path: str, metadata: dict, embed_model) -> list[TextNode]:
 
 
 def _get_genai_client():
-    import os
     from google import genai
-    from google.oauth2 import service_account
+    from google.auth import default as google_auth_default
     from python.config import get_settings
     s = get_settings()
-    sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", s.google_application_credentials)
-    creds = service_account.Credentials.from_service_account_file(
-        sa_path,
-        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
+    creds, _ = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     return genai.Client(
         vertexai=True,
         project=s.google_cloud_project,
