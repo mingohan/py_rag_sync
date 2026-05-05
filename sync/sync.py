@@ -131,15 +131,17 @@ def sync_google_drive(client, existing_md5s: dict, embed_model) -> dict:
         source_id = doc.metadata["source_id"]
         title = doc.metadata.get("file_name", source_id)
         stats["current_ids"].add(source_id)
-        md5 = compute_md5(doc.text)
-        if existing_md5s.get(source_id) == md5:
+        # Google Drive 用 modifiedTime 判斷是否有改動，避免每次 export Office 格式
+        # 產生不同 binary 導致 MD5 不穩定而觸發不必要的重新 embedding
+        version_key = doc.metadata.get("modified_time") or compute_md5(doc.text)
+        if existing_md5s.get(source_id) == version_key:
             stats["skipped"] += 1
             continue
 
         print(f"  [{i}/{total}] {title}")
         try:
             delete_source(client, "google_drive", source_id)
-            doc.metadata["file_md5"] = md5
+            doc.metadata["file_md5"] = version_key
             nodes = chunk_document(doc, embed_model)
             nodes = add_context_to_nodes(nodes, doc.text)
             nodes = embed_nodes(nodes)

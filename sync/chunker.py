@@ -38,7 +38,6 @@ def chunk_document(doc: Document, embed_model) -> list[TextNode]:
         embed_model=embed_model,
         buffer_size=1,  # 避免 buffer_size 過大導致 Token 暴增引發 Vertex AI 429 Quota Error
         breakpoint_percentile_threshold=85,  # 降低切點門檻 (從 95 -> 85)，產生較大、較完整的語意段落
-        embed_model_task_type="SEMANTIC_SIMILARITY",
     )
     nodes = parser.get_nodes_from_documents([doc])
     return [n for n in nodes if not is_low_quality(n.text)]

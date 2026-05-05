@@ -78,7 +78,7 @@ class GeminiVertexEmbedding(BaseEmbedding):
                     model=settings.embedding_model,
                     contents=texts,
                     config=genai_types.EmbedContentConfig(
-                        task_type="RETRIEVAL_QUERY",
+                        task_type="SEMANTIC_SIMILARITY",
                         output_dimensionality=settings.embedding_dimensions,
                     ),
                 )
