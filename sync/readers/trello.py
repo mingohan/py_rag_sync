@@ -73,8 +73,6 @@ def fetch_trello_documents() -> list[Document]:
                     meta.append(f"Start: {card['start'][:10]}")
                 if card.get("closed"):
                     meta.append("Archived: yes")
-                if card.get("dateLastActivity"):
-                    meta.append(f"LastActivity: {card['dateLastActivity'][:10]}")
                 # 負責人
                 assigned = [member_names.get(mid, mid) for mid in card.get("idMembers", [])]
                 if assigned:
