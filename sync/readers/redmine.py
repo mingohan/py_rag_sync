@@ -57,16 +57,6 @@ def fetch_redmine_documents() -> list[Document]:
                 meta.append(f"Start: {full['start_date']}")
             if full.get("due_date"):
                 meta.append(f"Due: {full['due_date']}")
-            if full.get("done_ratio") is not None:
-                meta.append(f"Done: {full['done_ratio']}%")
-            if full.get("estimated_hours") is not None:
-                meta.append(f"Estimated: {full['estimated_hours']}h")
-            if full.get("created_on"):
-                meta.append(f"Created: {full['created_on'][:10]}")
-            if full.get("updated_on"):
-                meta.append(f"Updated: {full['updated_on'][:10]}")
-            if full.get("closed_on"):
-                meta.append(f"Closed: {full['closed_on'][:10]}")
             if meta:
                 content_parts.append(" | ".join(meta))
 
@@ -87,12 +77,6 @@ def fetch_redmine_documents() -> list[Document]:
                     if isinstance(val, list):
                         val = ", ".join(str(v) for v in val)
                     content_parts.append(f"- {cf['name']}: {val}")
-
-            # --- watchers ---
-            watchers = full.get("watchers", [])
-            if watchers:
-                names = ", ".join(w["name"] for w in watchers)
-                content_parts.append(f"## 關注者\n{names}")
 
             # --- relations ---
             relations = full.get("relations", [])
@@ -180,9 +164,12 @@ def fetch_redmine_documents() -> list[Document]:
                     "start_date": full.get("start_date", "") or "",
                     "due_date": full.get("due_date", "") or "",
                     "done_ratio": str(full.get("done_ratio", "")),
+                    "estimated_hours": str(full.get("estimated_hours", "") or ""),
                     "spent_hours": str(full.get("spent_hours", "") or ""),
                     "created_on": full.get("created_on", "")[:10] if full.get("created_on") else "",
+                    "updated_on": full.get("updated_on", "")[:10] if full.get("updated_on") else "",
                     "closed_on": full.get("closed_on", "")[:10] if full.get("closed_on") else "",
+                    "watchers": ", ".join(w["name"] for w in full.get("watchers", [])),
                 },
                 doc_id=f"redmine_{full['id']}",
             )

@@ -65,12 +65,6 @@ def fetch_trello_documents() -> list[Document]:
                     meta.append(f"List: {list_name}")
                 if card.get("labels"):
                     meta.append(f"Labels: {', '.join(l['name'] for l in card['labels'] if l.get('name'))}")
-                if card.get("due"):
-                    due_str = card["due"][:10]
-                    complete = " (完成)" if card.get("dueComplete") else ""
-                    meta.append(f"Due: {due_str}{complete}")
-                if card.get("start"):
-                    meta.append(f"Start: {card['start'][:10]}")
                 if card.get("closed"):
                     meta.append("Archived: yes")
                 # 負責人
