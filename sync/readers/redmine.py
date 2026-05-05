@@ -61,8 +61,6 @@ def fetch_redmine_documents() -> list[Document]:
                 meta.append(f"Done: {full['done_ratio']}%")
             if full.get("estimated_hours") is not None:
                 meta.append(f"Estimated: {full['estimated_hours']}h")
-            if full.get("spent_hours") is not None:
-                meta.append(f"Spent: {full['spent_hours']}h")
             if full.get("created_on"):
                 meta.append(f"Created: {full['created_on'][:10]}")
             if full.get("updated_on"):
@@ -182,6 +180,7 @@ def fetch_redmine_documents() -> list[Document]:
                     "start_date": full.get("start_date", "") or "",
                     "due_date": full.get("due_date", "") or "",
                     "done_ratio": str(full.get("done_ratio", "")),
+                    "spent_hours": str(full.get("spent_hours", "") or ""),
                     "created_on": full.get("created_on", "")[:10] if full.get("created_on") else "",
                     "closed_on": full.get("closed_on", "")[:10] if full.get("closed_on") else "",
                 },
