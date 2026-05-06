@@ -3,7 +3,7 @@ name: Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"  # 每 1 小時執行一次
+    - cron: "0 */12 * * *"  # 每 12 小時執行一次
 
 jobs:
   sync:
