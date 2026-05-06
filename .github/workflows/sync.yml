@@ -3,7 +3,7 @@ name: Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */12 * * *"  # 每 12 小時執行一次
+    - cron: "0 10,22 * * *"  # 台灣時間 06:00 & 18:00
 
 jobs:
   sync:
