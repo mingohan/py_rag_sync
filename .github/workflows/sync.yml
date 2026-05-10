@@ -2,8 +2,6 @@ name: Sync
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 10,22 * * *"  # 台灣時間 06:00 & 18:00
 
 jobs:
   sync:
