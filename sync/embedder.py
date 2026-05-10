@@ -1,25 +1,18 @@
 """
-Embedding：Vertex AI gemini-embedding-2-preview（via google-genai）
-- Dense embedding：google-genai Vertex AI backend（RETRIEVAL_DOCUMENT）
-- Sparse embedding：fastembed BM25（本地執行，不需 API）
+Embedding: Vertex AI gemini-embedding-2-preview (via google-genai)
+- Dense embedding: GeminiVertexEmbedding from python.pipeline
+- Sparse embedding: fastembed BM25 (local, no API needed)
 """
-import time
-from google import genai
-from google.genai import types as genai_types
-from google.auth import default as google_auth_default
 from fastembed import SparseTextEmbedding
-from llama_index.core.schema import TextNode
+from sync.models import Chunk
 from python.config import get_settings
 
 settings = get_settings()
 
 BATCH_SIZE = 10
-MAX_RETRIES = 5
-RETRY_DELAY = 60
 
-# Model singleton（避免每次重新載入）
 _sparse_model = None
-_genai_client = None
+_embedding_model = None
 
 
 def _get_sparse_model() -> SparseTextEmbedding:
@@ -29,40 +22,32 @@ def _get_sparse_model() -> SparseTextEmbedding:
     return _sparse_model
 
 
-def _get_genai_client() -> genai.Client:
-    global _genai_client
-    if _genai_client is None:
-        creds, _ = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        _genai_client = genai.Client(
-            vertexai=True,
-            project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-            credentials=creds,
-        )
-    return _genai_client
+def _get_embedding_model():
+    from python.pipeline import GeminiVertexEmbedding
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = GeminiVertexEmbedding(embed_batch_size=10)
+    return _embedding_model
 
 
-def embed_nodes(nodes: list[TextNode]) -> list[TextNode]:
+def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
     """
-    批次 embed，同時產生：
-    - node.embedding（Dense，送 Vertex AI）
-    - node.metadata["sparse_embedding"]（Sparse BM25，本地）
+    Batch embed, producing both:
+    - node.embedding (Dense, via Vertex AI)
+    - node.metadata["sparse_indices"] / ["sparse_values"] (Sparse BM25, local)
     """
-    client = _get_genai_client()
+    emb = _get_embedding_model()
     sparse_model = _get_sparse_model()
 
     for i in range(0, len(nodes), BATCH_SIZE):
         batch = nodes[i:i + BATCH_SIZE]
         texts = [n.text for n in batch]
 
-        # Dense embedding（Vertex AI）
-        dense_results = _embed_batch(client, texts, task_type="RETRIEVAL_DOCUMENT")
-
-        # Sparse embedding（本地 BM25，不需要 API）
+        dense_vecs = emb.get_text_embeddings(texts)
         sparse_results = list(sparse_model.embed(texts))
 
-        for node, dense, sparse in zip(batch, dense_results, sparse_results):
-            node.embedding = dense.values
+        for node, dense, sparse in zip(batch, dense_vecs, sparse_results):
+            node.embedding = dense
             node.metadata["sparse_indices"] = sparse.indices.tolist()
             node.metadata["sparse_values"] = sparse.values.tolist()
 
@@ -72,39 +57,17 @@ def embed_nodes(nodes: list[TextNode]) -> list[TextNode]:
 
 
 def embed_query(text: str) -> tuple[list[float], dict]:
-    """查詢時同時產生 dense + sparse embedding"""
-    client = _get_genai_client()
+    """Generate both dense and sparse embeddings for a query"""
+    emb = _get_embedding_model()
     sparse_model = _get_sparse_model()
 
-    dense_results = _embed_batch(client, [text], task_type="RETRIEVAL_QUERY")
+    dense = emb.get_query_embedding(text)
     sparse_result = list(sparse_model.embed([text]))[0]
 
     return (
-        dense_results[0].values,
+        dense,
         {
             "indices": sparse_result.indices.tolist(),
             "values": sparse_result.values.tolist(),
         }
     )
-
-
-def _embed_batch(client: genai.Client, texts: list[str], task_type: str):
-    for attempt in range(MAX_RETRIES):
-        try:
-            result = client.models.embed_content(
-                model=settings.embedding_model,
-                contents=texts,
-                config=genai_types.EmbedContentConfig(
-                    task_type=task_type,
-                    output_dimensionality=settings.embedding_dimensions,
-                ),
-            )
-            return result.embeddings
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                print(f"  embed failed ({e}), retry {attempt + 1}...")
-                wait = RETRY_DELAY * (attempt + 1)
-                print(f"  waiting {wait}s before retry...")
-                time.sleep(wait)
-            else:
-                raise
