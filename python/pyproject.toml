@@ -31,6 +31,11 @@ dependencies = [
     "pymupdf4llm>=0.0.17",
     "pymupdf>=1.24.0",
 
+    # Office 文件解析
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+
     # Vertex AI
     "google-cloud-aiplatform>=1.60.0",
     "vertexai>=1.60.0",

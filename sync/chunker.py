@@ -1,23 +1,32 @@
 """
-Chunking 策略
+Chunking strategies
 
-文件類（Drive / GitLab Wiki / PDF）：
-  SemanticSplitterNodeParser — 用 embedding 相似度找語意斷點，切出語意完整的段落
+Document-type (Drive / GitLab Wiki / PDF):
+  SemanticSplitterNodeParser — finds semantic breakpoints via embedding similarity
 
-卡片類（Redmine / GitLab Issues / Trello / Slack）：
-  整筆不切，保留完整脈絡
+Card-type (Redmine / GitLab Issues / Trello / Slack):
+  No splitting — keeps full context intact
 
-PDF：
-  pymupdf4llm 先轉 Markdown → 走文件類流程
-  掃描 PDF → Gemini Vision OCR → Markdown → 文件類流程
+PDF:
+  pymupdf4llm converts to Markdown → document-type flow
+  Scanned PDF → Gemini Vision OCR → Markdown → document-type flow
 
-Contextual Retrieval（#10）：
-  chunk_document / chunk_card 切好後，可選呼叫 add_context_to_nodes()
-  為每個 chunk prepend 50-100 token 的背景說明，改善語意搜尋準確率
+Contextual Retrieval:
+  After chunk_document / chunk_card, optionally call add_context_to_nodes()
+  to prepend 50-100 token context to each chunk for improved search accuracy
 """
 import re
+import uuid
 from llama_index.core.node_parser import SemanticSplitterNodeParser
-from llama_index.core.schema import Document, TextNode
+from llama_index.core.schema import Document as LIDocument
+from sync.models import SourceDocument, Chunk, DocumentSection
+
+_SECTION_NS = uuid.UUID("a3e4d5c6-b7f8-4a9b-8c1d-2e3f4a5b6c7d")
+
+
+def _section_to_node_id(section_id: str) -> str:
+    """Convert string section_id to deterministic UUID for Qdrant"""
+    return str(uuid.uuid5(_SECTION_NS, section_id))
 
 
 MIN_CONTENT_LENGTH = 20
@@ -32,21 +41,26 @@ def is_low_quality(text: str) -> bool:
     return False
 
 
-def chunk_document(doc: Document, embed_model) -> list[TextNode]:
-    """文件類：SemanticSplitterNodeParser 按語意斷點切割"""
+def chunk_document(doc: SourceDocument, embed_model) -> list[Chunk]:
+    """Document-type: SemanticSplitterNodeParser splits at semantic breakpoints"""
     parser = SemanticSplitterNodeParser(
         embed_model=embed_model,
-        buffer_size=1,  # 避免 buffer_size 過大導致 Token 暴增引發 Vertex AI 429 Quota Error
-        breakpoint_percentile_threshold=85,  # 降低切點門檻 (從 95 -> 85)，產生較大、較完整的語意段落
+        buffer_size=1,
+        breakpoint_percentile_threshold=85,
+        embed_model_task_type="SEMANTIC_SIMILARITY",
     )
-    nodes = parser.get_nodes_from_documents([doc])
-    return [n for n in nodes if not is_low_quality(n.text)]
+    li_doc = LIDocument(text=doc.text, metadata=doc.metadata)
+    nodes = parser.get_nodes_from_documents([li_doc])
+    return [
+        Chunk(node_id=n.node_id, text=n.text, metadata=dict(n.metadata))
+        for n in nodes if not is_low_quality(n.text)
+    ]
 
 
-def chunk_pdf(file_path: str, metadata: dict, embed_model) -> list[TextNode]:
+def chunk_pdf(file_path: str, metadata: dict, embed_model) -> list[Chunk]:
     """
-    PDF：pymupdf4llm 轉 Markdown 後走 chunk_document。
-    掃描 PDF（文字量極少）→ Gemini Vision OCR。
+    PDF: pymupdf4llm converts to Markdown then uses chunk_document.
+    Scanned PDF (minimal text) → Gemini Vision OCR.
     """
     import pymupdf4llm
 
@@ -55,7 +69,7 @@ def chunk_pdf(file_path: str, metadata: dict, embed_model) -> list[TextNode]:
     if len(md_text.strip()) < 100:
         md_text = _ocr_pdf(file_path)
 
-    doc = Document(text=md_text, metadata=metadata)
+    doc = SourceDocument(text=md_text, metadata=metadata)
     return chunk_document(doc, embed_model)
 
 
@@ -94,7 +108,7 @@ def _ocr_pdf(file_path: str) -> str:
             model=model,
             contents=[
                 genai_types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type="image/png"),
-                "請將這頁的所有文字內容完整轉錄，保留段落結構。如有表格請轉成 Markdown 表格格式。",
+                "Transcribe all text content from this page completely, preserving paragraph structure. Convert tables to Markdown table format.",
             ],
         )
         result_pages.append(f"<!-- page {page_num + 1} -->\n{response.text}")
@@ -103,18 +117,85 @@ def _ocr_pdf(file_path: str) -> str:
     return "\n\n".join(result_pages)
 
 
-def chunk_card(content: str, metadata: dict) -> list[TextNode]:
-    """卡片類（Redmine / GitLab Issues / Trello / Slack）：整筆不切"""
+def chunk_card(content: str, metadata: dict) -> list[Chunk]:
+    """Card-type (Redmine / GitLab Issues / Trello / Slack): no splitting"""
     if is_low_quality(content):
         return []
-    node = TextNode(text=content, metadata=metadata)
-    return [node]
+    node_id = str(uuid.uuid4())
+    return [Chunk(node_id=node_id, text=content, metadata=dict(metadata))]
+
+
+# Gemini embedding-2 limit is 8192 tokens. Use ~30k chars as a conservative
+# upper bound (covers CJK at ~2 chars/token and English at ~4 chars/token).
+_MAX_SECTION_CHARS = 30000
+
+
+def _split_long_text(text: str, max_chars: int) -> list[str]:
+    """Split text at paragraph boundaries without exceeding max_chars."""
+    paragraphs = text.split("\n\n")
+    result = []
+    current_parts: list[str] = []
+    current_len = 0
+    for para in paragraphs:
+        para_len = len(para)
+        if current_len + para_len > max_chars and current_parts:
+            result.append("\n\n".join(current_parts))
+            current_parts = [para]
+            current_len = para_len
+        else:
+            current_parts.append(para)
+            current_len += para_len + 2  # +2 for the "\n\n" separator
+    if current_parts:
+        result.append("\n\n".join(current_parts))
+    return result or [text]
+
+
+def chunk_sections(sections: list[DocumentSection]) -> list[Chunk]:
+    """Section-level chunking with stable deterministic node IDs.
+
+    Each section's metadata should already contain all doc-level fields
+    (source_type, source_id, source_updated_at, etc.). This function adds
+    section-specific fields (section_id, section_type, section_md5).
+
+    Long sections (> _MAX_SECTION_CHARS) are split at paragraph boundaries into
+    sub-chunks that share the same section_id and section_md5, so the diff logic
+    in _sync_sections() treats them as a single logical unit.
+    """
+    chunks = []
+    for section in sections:
+        if is_low_quality(section.text):
+            continue
+        base_meta = {
+            **section.metadata,
+            "section_id": section.section_id,
+            "section_type": section.section_type,
+            "section_md5": section.md5,
+        }
+        if len(section.text) <= _MAX_SECTION_CHARS:
+            chunks.append(Chunk(
+                node_id=_section_to_node_id(section.section_id),
+                text=section.text,
+                metadata=base_meta,
+            ))
+        else:
+            sub_texts = _split_long_text(section.text, _MAX_SECTION_CHARS)
+            for i, sub_text in enumerate(sub_texts):
+                if is_low_quality(sub_text):
+                    continue
+                chunks.append(Chunk(
+                    # Sub-chunk IDs include index so each Qdrant point is unique,
+                    # but section_id in metadata stays the same for group deletion.
+                    node_id=_section_to_node_id(f"{section.section_id}::chunk_{i}"),
+                    text=sub_text,
+                    metadata=base_meta,
+                ))
+    return chunks
 
 
 _CONTEXT_PROMPT = """\
-以下是一份完整文件，之後是從中擷取的一個段落。
-請用 1-2 句話（50-100 個 token）說明這個段落在整份文件中的角色與背景，
-幫助搜尋系統更準確地找到它。只輸出說明本身，不要加任何前綴。
+Here is a complete document, followed by a chunk extracted from it.
+In 1-2 sentences (50-100 tokens), describe this chunk's role and context within the overall document,
+to help the search system find it more accurately. Output only the description, no prefix.
 
 <document>
 {doc_text}
@@ -126,14 +207,13 @@ _CONTEXT_PROMPT = """\
 """
 
 
-def add_context_to_nodes(nodes: list[TextNode], doc_text: str) -> list[TextNode]:
+def add_context_to_nodes(nodes: list[Chunk], doc_text: str) -> list[Chunk]:
     """
-    Contextual Retrieval：為每個 node prepend 背景說明。
-    doc_text 是切割前的完整文件文字。
+    Contextual Retrieval: prepends context to each node.
+    doc_text is the full document text before chunking.
     """
     from python.config import get_settings
     client = _get_genai_client()
-    # 大幅放寬限制，充分利用 Gemini 破百萬 Token 的 context window (30萬字元約為 10萬 Token)
     truncated_doc = doc_text[:300000] if len(doc_text) > 300000 else doc_text
 
     for node in nodes:

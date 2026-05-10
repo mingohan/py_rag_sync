@@ -267,8 +267,8 @@ def ensure_collection(client: QdrantClient):
                 )
             },
         )
-        # Payload index 加速 filter 刪除（source_type、source_id）
-        for field in ("source_type", "source_id"):
+        # Payload index 加速 filter 刪除（source_type、source_id、section_id）
+        for field in ("source_type", "source_id", "section_id"):
             client.create_payload_index(
                 collection_name=settings.qdrant_collection,
                 field_name=field,
