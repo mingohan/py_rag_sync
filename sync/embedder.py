@@ -43,7 +43,7 @@ def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
         batch = nodes[i:i + BATCH_SIZE]
         texts = [n.text for n in batch]
 
-        dense_vecs = emb.get_text_embeddings(texts)
+        dense_vecs = emb._get_text_embeddings(texts)
         sparse_results = list(sparse_model.embed(texts))
 
         for node, dense, sparse in zip(batch, dense_vecs, sparse_results):
@@ -61,7 +61,7 @@ def embed_query(text: str) -> tuple[list[float], dict]:
     emb = _get_embedding_model()
     sparse_model = _get_sparse_model()
 
-    dense = emb.get_query_embedding(text)
+    dense = emb._get_query_embedding(text)
     sparse_result = list(sparse_model.embed([text]))[0]
 
     return (
