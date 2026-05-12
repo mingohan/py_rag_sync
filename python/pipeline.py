@@ -83,6 +83,8 @@ class GeminiVertexEmbedding(BaseEmbedding):
                     ),
                 )
                 values = [e.values for e in result.embeddings]
+                if len(values) != len(texts):
+                    raise ValueError(f"Embedding API returned {len(values)} embeddings for {len(texts)} texts")
                 if any(v is None for v in values):
                     raise ValueError(f"Embedding API returned None for {sum(1 for v in values if v is None)}/{len(values)} texts")
                 return values
@@ -136,6 +138,8 @@ class GeminiVertexEmbedding(BaseEmbedding):
                     ),
                 )
                 values = [e.values for e in result.embeddings]
+                if len(values) != len(texts):
+                    raise ValueError(f"Embedding API returned {len(values)} embeddings for {len(texts)} texts")
                 if any(v is None for v in values):
                     raise ValueError(f"Embedding API returned None for {sum(1 for v in values if v is None)}/{len(values)} texts")
                 return values
