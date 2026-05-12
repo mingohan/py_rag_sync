@@ -10,6 +10,10 @@ from python.config import get_settings
 settings = get_settings()
 
 BATCH_SIZE = 10
+# Gemini embedding token limit is 8192. CJK ~2 chars/token → 8192*2=16k,
+# but add_context_to_nodes can append ~500 chars after chunk_sections splits,
+# so cap at 14k to stay safely under the limit after context prepend.
+_MAX_EMBED_CHARS = 14000
 
 _sparse_model = None
 _embedding_model = None
@@ -33,8 +37,9 @@ def _get_embedding_model():
 def _embed_single(emb, sparse_model, node: Chunk) -> bool:
     """Embed a single node in-place. Returns False if the API rejects the text."""
     try:
-        node.embedding = emb._get_text_embedding(node.text)
-        sparse_result = list(sparse_model.embed([node.text]))[0]
+        text = node.text[:_MAX_EMBED_CHARS]
+        node.embedding = emb._get_text_embedding(text)
+        sparse_result = list(sparse_model.embed([text]))[0]
         node.metadata["sparse_indices"] = sparse_result.indices.tolist()
         node.metadata["sparse_values"] = sparse_result.values.tolist()
         return True
@@ -54,7 +59,7 @@ def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
 
     for i in range(0, len(nodes), BATCH_SIZE):
         batch = nodes[i:i + BATCH_SIZE]
-        texts = [n.text for n in batch]
+        texts = [n.text[:_MAX_EMBED_CHARS] for n in batch]
 
         try:
             dense_vecs = emb._get_text_embeddings(texts)
