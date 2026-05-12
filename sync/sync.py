@@ -586,10 +586,10 @@ def main():
         tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model, chunk_context_cache))
     else:
         print("\n[GitLab] GITLAB_TOKEN not set, skipping")
-    # if os.environ.get("TRELLO_API_KEY"):
-    #     tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
-    # else:
-    #     print("\n[Trello] TRELLO_API_KEY not set, skipping")
+    if os.environ.get("TRELLO_API_KEY"):
+        tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
+    else:
+        print("\n[Trello] TRELLO_API_KEY not set, skipping")
     if os.environ.get("ASANA_ACCESS_TOKEN"):
         tasks["asana"] = (sync_asana, (client, doc_state, section_state, chunk_context_cache))
     else:
