@@ -18,6 +18,7 @@ from .embedder import embed_nodes
 from .readers.redmine import fetch_redmine_lightweight, fetch_redmine_issue
 from .readers.google_drive import list_google_drive_files, fetch_google_drive_file
 from .readers.gitlab import fetch_gitlab_issues_lightweight, fetch_gitlab_issue_full, fetch_gitlab_wiki_documents
+from .readers.asana import fetch_asana_lightweight, fetch_asana_task_full
 from .readers.trello import fetch_trello_lightweight, fetch_trello_card_full
 
 settings = get_settings()
@@ -389,6 +390,65 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model, chunk
     return stats
 
 
+def sync_asana(client, doc_state: dict, section_state: dict, chunk_context_cache: dict | None = None) -> dict:
+    print("\n[Asana] syncing...")
+    stats = {
+        "added": 0, "skipped": 0, "failed": 0,
+        "updated_sections": 0, "skipped_sections": 0,
+        "current_ids": set(),
+    }
+
+    lightweight_items = fetch_asana_lightweight()
+    total = len(lightweight_items)
+    pending_skips = 0
+
+    for i, item in enumerate(lightweight_items, 1):
+        source_id = f"asana_task_{item['id']}"
+        stats["current_ids"].add(source_id)
+        updated_at = item.get("modified_at")
+        existing = doc_state.get(source_id, {})
+
+        # Layer 1: timestamp check
+        if existing.get("updated_at") == updated_at and updated_at:
+            stats["skipped"] += 1
+            pending_skips += 1
+            continue
+
+        if pending_skips:
+            print(f"  [{i}/{total}] skipped {pending_skips} (no change)")
+            pending_skips = 0
+
+        try:
+            doc = fetch_asana_task_full(item["id"], item["project_context"])
+        except Exception as e:
+            print(f"  [error] asana/{source_id} fetch: {e}")
+            stats["failed"] += 1
+            continue
+
+        sections = doc.metadata.get("sections", [])
+        core_text = doc.metadata.get("core_text", doc.text)
+
+        print(f"  [{i}/{total}] {doc.metadata.get('file_name', source_id)}")
+        try:
+            changed = _sync_sections(
+                client, source_id, "asana", sections,
+                doc_state, section_state, core_text, updated_at, stats,
+                chunk_context_cache=chunk_context_cache,
+            )
+            if changed or not existing:
+                stats["added"] += 1
+        except Exception as e:
+            print(f"  [error] {source_id}: {e}")
+            stats["failed"] += 1
+
+    if pending_skips:
+        print(f"  [{total}/{total}] skipped {pending_skips} (no change)")
+    print(f"  added={stats['added']} skipped={stats['skipped']} "
+          f"updated_sections={stats['updated_sections']} skipped_sections={stats['skipped_sections']} "
+          f"failed={stats['failed']}")
+    return stats
+
+
 def sync_trello(client, doc_state: dict, section_state: dict, chunk_context_cache: dict | None = None) -> dict:
     print("\n[Trello] syncing...")
     stats = {
@@ -526,10 +586,14 @@ def main():
         tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model, chunk_context_cache))
     else:
         print("\n[GitLab] GITLAB_TOKEN not set, skipping")
-    if os.environ.get("TRELLO_API_KEY"):
-        tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
+    # if os.environ.get("TRELLO_API_KEY"):
+    #     tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
+    # else:
+    #     print("\n[Trello] TRELLO_API_KEY not set, skipping")
+    if os.environ.get("ASANA_ACCESS_TOKEN"):
+        tasks["asana"] = (sync_asana, (client, doc_state, section_state, chunk_context_cache))
     else:
-        print("\n[Trello] TRELLO_API_KEY not set, skipping")
+        print("\n[Asana] ASANA_ACCESS_TOKEN not set, skipping")
 
     total_stats = {}
     with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
