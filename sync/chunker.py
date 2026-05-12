@@ -131,9 +131,9 @@ def chunk_card(content: str, metadata: dict) -> list[Chunk]:
     return [Chunk(node_id=node_id, text=content, metadata=dict(metadata))]
 
 
-# Gemini embedding-2 limit is 8192 tokens. Use ~30k chars as a conservative
-# upper bound (covers CJK at ~2 chars/token and English at ~4 chars/token).
-_MAX_SECTION_CHARS = 30000
+# Gemini embedding-2 limit is 8192 tokens.
+# CJK ~2 chars/token → 8192 * 2 = ~16k chars; use 12k to stay safely under.
+_MAX_SECTION_CHARS = 12000
 
 
 def _split_long_text(text: str, max_chars: int) -> list[str]:
