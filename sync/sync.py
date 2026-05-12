@@ -577,16 +577,15 @@ def main():
 
     embed_model = build_embedding()
 
-    # tasks = {"redmine": (sync_redmine, (client, doc_state, section_state, chunk_context_cache))}
-    # if os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
-    #     tasks["google_drive"] = (sync_google_drive, (client, doc_state, section_state, embed_model, chunk_context_cache))
-    # else:
-    #     print("\n[Google Drive] GOOGLE_DRIVE_FOLDER_ID not set, skipping")
-    # if os.environ.get("GITLAB_TOKEN"):
-    #     tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model, chunk_context_cache))
-    # else:
-    #     print("\n[GitLab] GITLAB_TOKEN not set, skipping")
-    tasks = {}
+    tasks = {"redmine": (sync_redmine, (client, doc_state, section_state, chunk_context_cache))}
+    if os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
+        tasks["google_drive"] = (sync_google_drive, (client, doc_state, section_state, embed_model, chunk_context_cache))
+    else:
+        print("\n[Google Drive] GOOGLE_DRIVE_FOLDER_ID not set, skipping")
+    if os.environ.get("GITLAB_TOKEN"):
+        tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model, chunk_context_cache))
+    else:
+        print("\n[GitLab] GITLAB_TOKEN not set, skipping")
     # if os.environ.get("TRELLO_API_KEY"):
     #     tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
     # else:
