@@ -111,8 +111,6 @@ def _build_trello_card_doc(card: dict, comments: list[dict], board_context: dict
         meta.append(f"Start: {card['start'][:10]}")
     if card.get("closed"):
         meta.append("Archived: yes")
-    if card.get("dateLastActivity"):
-        meta.append(f"LastActivity: {card['dateLastActivity'][:10]}")
     if assigned:
         meta.append(f"Members: {', '.join(assigned)}")
     if meta:

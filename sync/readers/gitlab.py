@@ -94,8 +94,6 @@ def _build_gitlab_issue_doc(issue: dict, notes: list[dict], project_path: str, b
         meta.append(f"Due: {issue['due_date']}")
     if issue.get("created_at"):
         meta.append(f"Created: {issue['created_at'][:10]}")
-    if issue.get("updated_at"):
-        meta.append(f"Updated: {issue['updated_at'][:10]}")
     if issue.get("closed_at"):
         meta.append(f"Closed: {issue['closed_at'][:10]}")
     if issue.get("closed_by"):
@@ -105,11 +103,6 @@ def _build_gitlab_issue_doc(issue: dict, notes: list[dict], project_path: str, b
     ts = issue.get("time_stats", {})
     if ts.get("human_time_estimate"):
         meta.append(f"Estimate: {ts['human_time_estimate']}")
-    if ts.get("human_total_time_spent"):
-        meta.append(f"Spent: {ts['human_total_time_spent']}")
-    tc = issue.get("task_completion_status", {})
-    if tc.get("count", 0) > 0:
-        meta.append(f"Tasks: {tc['completed_count']}/{tc['count']}")
     if meta:
         header_parts.append(" | ".join(meta))
 
@@ -141,6 +134,10 @@ def _build_gitlab_issue_doc(issue: dict, notes: list[dict], project_path: str, b
         "due_date": issue.get("due_date", "") or "",
         "created_at": issue.get("created_at", "")[:10] if issue.get("created_at") else "",
         "closed_at": issue.get("closed_at", "")[:10] if issue.get("closed_at") else "",
+        "time_spent": issue.get("time_stats", {}).get("human_total_time_spent", "") or "",
+        "time_estimate": issue.get("time_stats", {}).get("human_time_estimate", "") or "",
+        "tasks_completed": issue.get("task_completion_status", {}).get("completed_count", 0),
+        "tasks_total": issue.get("task_completion_status", {}).get("count", 0),
         "project": project_path,
     }
 
