@@ -15,6 +15,7 @@ Contextual Retrieval:
   After chunk_document / chunk_card, optionally call add_context_to_nodes()
   to prepend 50-100 token context to each chunk for improved search accuracy
 """
+import hashlib
 import re
 import uuid
 from llama_index.core.node_parser import SemanticSplitterNodeParser
@@ -213,16 +214,32 @@ to help the search system find it more accurately. Output only the description, 
 """
 
 
-def add_context_to_nodes(nodes: list[Chunk], doc_text: str) -> list[Chunk]:
+def add_context_to_nodes(
+    nodes: list[Chunk],
+    doc_text: str,
+    chunk_context_cache: dict | None = None,
+) -> list[Chunk]:
     """
     Contextual Retrieval: prepends context to each node.
     doc_text is the full document text before chunking.
+    chunk_context_cache maps chunk_md5 → previously generated context_text to skip LLM calls.
     """
     from python.config import get_settings
     client = _get_genai_client()
-    truncated_doc = doc_text[:300000] if len(doc_text) > 300000 else doc_text
+    truncated_doc = doc_text[:30000] if len(doc_text) > 30000 else doc_text
 
+    cache_hits = 0
     for node in nodes:
+        chunk_md5 = hashlib.md5(node.text.encode()).hexdigest()
+        node.metadata["chunk_md5"] = chunk_md5
+
+        if chunk_context_cache is not None and chunk_md5 in chunk_context_cache:
+            context = chunk_context_cache[chunk_md5]
+            node.metadata["context_text"] = context
+            node.text = f"{context}\n\n{node.text}"
+            cache_hits += 1
+            continue
+
         try:
             prompt = _CONTEXT_PROMPT.format(
                 doc_text=truncated_doc,
@@ -234,8 +251,11 @@ def add_context_to_nodes(nodes: list[Chunk], doc_text: str) -> list[Chunk]:
             )
             context = response.text.strip()
             if context:
+                node.metadata["context_text"] = context
                 node.text = f"{context}\n\n{node.text}"
         except Exception as e:
             print(f"  [contextual] failed for node {node.node_id}: {e}")
 
+    if cache_hits:
+        print(f"  [contextual] {cache_hits}/{len(nodes)} contexts reused from cache")
     return nodes

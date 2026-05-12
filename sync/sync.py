@@ -27,19 +27,22 @@ def compute_md5(content: str) -> str:
     return hashlib.md5(content.encode()).hexdigest()
 
 
-def get_existing_state(client) -> tuple[dict, dict]:
+def get_existing_state(client) -> tuple[dict, dict, dict]:
     """
     Scroll all Qdrant points and return:
-      doc_state:     source_id  → {updated_at, file_md5}
-      section_state: section_id → {section_md5}
+      doc_state:           source_id  → {updated_at, file_md5}
+      section_state:       section_id → {section_md5}
+      chunk_context_cache: chunk_md5  → context_text
     """
     doc_state: dict[str, dict] = {}
     section_state: dict[str, dict] = {}
+    chunk_context_cache: dict[str, str] = {}
     offset = None
     while True:
         result, next_offset = client.scroll(
             collection_name=settings.qdrant_collection,
-            with_payload=["source_id", "section_id", "section_md5", "source_updated_at", "file_md5"],
+            with_payload=["source_id", "section_id", "section_md5", "source_updated_at", "file_md5",
+                          "chunk_md5", "context_text"],
             with_vectors=False,
             limit=1000,
             offset=offset,
@@ -50,6 +53,8 @@ def get_existing_state(client) -> tuple[dict, dict]:
             section_md5 = point.payload.get("section_md5")
             updated_at = point.payload.get("source_updated_at")
             file_md5 = point.payload.get("file_md5")
+            chunk_md5 = point.payload.get("chunk_md5")
+            context_text = point.payload.get("context_text")
 
             if source_id and source_id not in doc_state:
                 doc_state[source_id] = {
@@ -60,11 +65,14 @@ def get_existing_state(client) -> tuple[dict, dict]:
             if section_id and section_md5:
                 section_state[section_id] = {"section_md5": section_md5}
 
+            if chunk_md5 and context_text:
+                chunk_context_cache[chunk_md5] = context_text
+
         if next_offset is None:
             break
         offset = next_offset
 
-    return doc_state, section_state
+    return doc_state, section_state, chunk_context_cache
 
 
 def get_existing_source_ids(client) -> dict[str, set[str]]:
@@ -171,6 +179,7 @@ def _sync_sections(
     core_text: str,
     updated_at: str | None,
     stats: dict,
+    chunk_context_cache: dict | None = None,
 ) -> bool:
     """
     Section-level diff and upsert. Returns True if any changes were made.
@@ -212,7 +221,7 @@ def _sync_sections(
 
     if changed_sections:
         nodes = chunk_sections(changed_sections)
-        nodes = add_context_to_nodes(nodes, core_text)
+        nodes = add_context_to_nodes(nodes, core_text, chunk_context_cache=chunk_context_cache)
         nodes = embed_nodes(nodes)
         upsert_nodes(client, nodes)
         stats["updated_sections"] += len(changed_sections)
@@ -224,7 +233,7 @@ def _sync_sections(
     return changed
 
 
-def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model) -> dict:
+def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model, chunk_context_cache: dict | None = None) -> dict:
     print("\n[Google Drive] syncing...")
     stats = {"added": 0, "skipped": 0, "failed": 0, "current_ids": set()}
 
@@ -267,7 +276,7 @@ def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model)
         try:
             doc.metadata["file_md5"] = md5
             nodes = chunk_document(doc, embed_model)
-            nodes = add_context_to_nodes(nodes, doc.text)
+            nodes = add_context_to_nodes(nodes, doc.text, chunk_context_cache=chunk_context_cache)
             nodes = embed_nodes(nodes)
             delete_source(client, "google_drive", source_id)
             upsert_nodes(client, nodes)
@@ -282,7 +291,7 @@ def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model)
     return stats
 
 
-def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> dict:
+def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model, chunk_context_cache: dict | None = None) -> dict:
     print("\n[GitLab] syncing...")
     stats = {
         "added": 0, "skipped": 0, "failed": 0,
@@ -333,6 +342,7 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
                     changed = _sync_sections(
                         client, source_id, "gitlab_issue", sections,
                         doc_state, section_state, core_text, updated_at, stats,
+                        chunk_context_cache=chunk_context_cache,
                     )
                     if changed or not existing:
                         stats["added"] += 1
@@ -363,7 +373,7 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
                     delete_source(client, "gitlab_wiki", source_id)
                     doc.metadata["file_md5"] = md5
                     nodes = chunk_card(doc.text, doc.metadata)
-                    nodes = add_context_to_nodes(nodes, doc.text)
+                    nodes = add_context_to_nodes(nodes, doc.text, chunk_context_cache=chunk_context_cache)
                     nodes = embed_nodes(nodes)
                     upsert_nodes(client, nodes)
                     stats["added"] += 1
@@ -379,7 +389,7 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
     return stats
 
 
-def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
+def sync_trello(client, doc_state: dict, section_state: dict, chunk_context_cache: dict | None = None) -> dict:
     print("\n[Trello] syncing...")
     stats = {
         "added": 0, "skipped": 0, "failed": 0,
@@ -422,6 +432,7 @@ def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
             changed = _sync_sections(
                 client, source_id, "trello", sections,
                 doc_state, section_state, core_text, updated_at, stats,
+                chunk_context_cache=chunk_context_cache,
             )
             if changed or not existing:
                 stats["added"] += 1
@@ -437,7 +448,7 @@ def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
     return stats
 
 
-def sync_redmine(client, doc_state: dict, section_state: dict) -> dict:
+def sync_redmine(client, doc_state: dict, section_state: dict, chunk_context_cache: dict | None = None) -> dict:
     print("\n[Redmine] syncing...")
     stats = {
         "added": 0, "skipped": 0, "failed": 0,
@@ -480,6 +491,7 @@ def sync_redmine(client, doc_state: dict, section_state: dict) -> dict:
             changed = _sync_sections(
                 client, source_id, "redmine", sections,
                 doc_state, section_state, core_text, updated_at, stats,
+                chunk_context_cache=chunk_context_cache,
             )
             if changed or not existing:
                 stats["added"] += 1
@@ -500,22 +512,22 @@ def main():
 
     client = get_qdrant_client()
     ensure_collection(client)
-    doc_state, section_state = get_existing_state(client)
+    doc_state, section_state, chunk_context_cache = get_existing_state(client)
     existing_source_ids = get_existing_source_ids(client)
 
     embed_model = build_embedding()
 
-    tasks = {"redmine": (sync_redmine, (client, doc_state, section_state))}
+    tasks = {"redmine": (sync_redmine, (client, doc_state, section_state, chunk_context_cache))}
     if os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
-        tasks["google_drive"] = (sync_google_drive, (client, doc_state, section_state, embed_model))
+        tasks["google_drive"] = (sync_google_drive, (client, doc_state, section_state, embed_model, chunk_context_cache))
     else:
         print("\n[Google Drive] GOOGLE_DRIVE_FOLDER_ID not set, skipping")
     if os.environ.get("GITLAB_TOKEN"):
-        tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model))
+        tasks["gitlab"] = (sync_gitlab, (client, doc_state, section_state, embed_model, chunk_context_cache))
     else:
         print("\n[GitLab] GITLAB_TOKEN not set, skipping")
     if os.environ.get("TRELLO_API_KEY"):
-        tasks["trello"] = (sync_trello, (client, doc_state, section_state))
+        tasks["trello"] = (sync_trello, (client, doc_state, section_state, chunk_context_cache))
     else:
         print("\n[Trello] TRELLO_API_KEY not set, skipping")
 
