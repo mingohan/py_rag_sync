@@ -46,6 +46,9 @@ def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
         dense_vecs = emb._get_text_embeddings(texts)
         sparse_results = list(sparse_model.embed(texts))
 
+        if len(dense_vecs) != len(batch):
+            print(f"  [warn] embedding count mismatch: got {len(dense_vecs)}, expected {len(batch)}")
+
         for node, dense, sparse in zip(batch, dense_vecs, sparse_results):
             node.embedding = dense
             node.metadata["sparse_indices"] = sparse.indices.tolist()

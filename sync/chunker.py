@@ -50,7 +50,13 @@ def chunk_document(doc: SourceDocument, embed_model) -> list[Chunk]:
         embed_model_task_type="SEMANTIC_SIMILARITY",
     )
     li_doc = LIDocument(text=doc.text, metadata=doc.metadata)
-    nodes = parser.get_nodes_from_documents([li_doc])
+    try:
+        nodes = parser.get_nodes_from_documents([li_doc])
+    except ValueError as e:
+        # SemanticSplitter gets an empty/mismatched embedding from the API;
+        # fall back to treating the whole document as one chunk.
+        print(f"  [warn] semantic split failed ({e}), falling back to single chunk")
+        return chunk_card(doc.text, doc.metadata)
     return [
         Chunk(node_id=n.node_id, text=n.text, metadata=dict(n.metadata))
         for n in nodes if not is_low_quality(n.text)

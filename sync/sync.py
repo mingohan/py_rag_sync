@@ -138,6 +138,9 @@ def upsert_nodes(client, nodes: list[Chunk]):
         return
     points = []
     for node in nodes:
+        if node.embedding is None:
+            print(f"  [warn] skipping node {node.node_id}: missing embedding")
+            continue
         sparse_indices = node.metadata.pop("sparse_indices", [])
         sparse_values = node.metadata.pop("sparse_values", [])
         points.append(PointStruct(
@@ -226,8 +229,10 @@ def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model)
     stats = {"added": 0, "skipped": 0, "failed": 0, "current_ids": set()}
 
     service, files = list_google_drive_files()
+    total = len(files)
+    pending_skips = 0
 
-    for f in files:
+    for i, f in enumerate(files, 1):
         fid = f["id"]
         source_id = f"drive_{fid}"
         modified_time = f.get("modifiedTime", "")
@@ -238,6 +243,7 @@ def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model)
         # Layer 1: modifiedTime unchanged → skip download entirely
         if existing.get("updated_at") == modified_time and modified_time:
             stats["skipped"] += 1
+            pending_skips += 1
             continue
 
         # Download content
@@ -251,21 +257,27 @@ def sync_google_drive(client, doc_state: dict, section_state: dict, embed_model)
             if existing.get("updated_at") != modified_time and modified_time:
                 update_source_updated_at(client, source_id, modified_time)
             stats["skipped"] += 1
+            pending_skips += 1
             continue
 
-        print(f"  {doc.metadata.get('file_name', source_id)}")
+        if pending_skips:
+            print(f"  [{i}/{total}] skipped {pending_skips} (no change)")
+            pending_skips = 0
+        print(f"  [{i}/{total}] {doc.metadata.get('file_name', source_id)}")
         try:
-            delete_source(client, "google_drive", source_id)
             doc.metadata["file_md5"] = md5
             nodes = chunk_document(doc, embed_model)
             nodes = add_context_to_nodes(nodes, doc.text)
             nodes = embed_nodes(nodes)
+            delete_source(client, "google_drive", source_id)
             upsert_nodes(client, nodes)
             stats["added"] += 1
         except Exception as e:
             print(f"  [error] google_drive/{source_id}: {e}")
             stats["failed"] += 1
 
+    if pending_skips:
+        print(f"  [{total}/{total}] skipped {pending_skips} (no change)")
     print(f"  added={stats['added']} skipped={stats['skipped']} failed={stats['failed']}")
     return stats
 
@@ -288,6 +300,7 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
             issue_items = fetch_gitlab_issues_lightweight(project_path)
             print(f"    issues: {len(issue_items)}")
             total = len(issue_items)
+            pending_skips = 0
 
             for i, item in enumerate(issue_items, 1):
                 source_id = f"gitlab_issue_{project_path}_{item['iid']}"
@@ -298,7 +311,12 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
                 # Layer 1: timestamp check
                 if existing.get("updated_at") == updated_at and updated_at:
                     stats["skipped"] += 1
+                    pending_skips += 1
                     continue
+
+                if pending_skips:
+                    print(f"    [{i}/{total}] skipped {pending_skips} (no change)")
+                    pending_skips = 0
 
                 try:
                     doc = fetch_gitlab_issue_full(project_path, item["issue"])
@@ -321,6 +339,9 @@ def sync_gitlab(client, doc_state: dict, section_state: dict, embed_model) -> di
                 except Exception as e:
                     print(f"    [error] {source_id}: {e}")
                     stats["failed"] += 1
+
+            if pending_skips:
+                print(f"    [{total}/{total}] skipped {pending_skips} (no change)")
 
         except Exception as e:
             print(f"    issues error: {e}")
@@ -368,6 +389,7 @@ def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
 
     lightweight_items = fetch_trello_lightweight()
     total = len(lightweight_items)
+    pending_skips = 0
 
     for i, item in enumerate(lightweight_items, 1):
         source_id = f"trello_{item['id']}"
@@ -378,7 +400,12 @@ def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
         # Layer 1: timestamp check
         if existing.get("updated_at") == updated_at and updated_at:
             stats["skipped"] += 1
+            pending_skips += 1
             continue
+
+        if pending_skips:
+            print(f"  [{i}/{total}] skipped {pending_skips} (no change)")
+            pending_skips = 0
 
         try:
             doc = fetch_trello_card_full(item["id"], item["board_context"])
@@ -402,6 +429,8 @@ def sync_trello(client, doc_state: dict, section_state: dict) -> dict:
             print(f"  [error] {source_id}: {e}")
             stats["failed"] += 1
 
+    if pending_skips:
+        print(f"  [{total}/{total}] skipped {pending_skips} (no change)")
     print(f"  added={stats['added']} skipped={stats['skipped']} "
           f"updated_sections={stats['updated_sections']} skipped_sections={stats['skipped_sections']} "
           f"failed={stats['failed']}")
@@ -418,6 +447,7 @@ def sync_redmine(client, doc_state: dict, section_state: dict) -> dict:
 
     lightweight_items = fetch_redmine_lightweight()
     total = len(lightweight_items)
+    pending_skips = 0
 
     for i, item in enumerate(lightweight_items, 1):
         source_id = f"redmine_issue_{item['id']}"
@@ -428,7 +458,12 @@ def sync_redmine(client, doc_state: dict, section_state: dict) -> dict:
         # Layer 1: timestamp check
         if existing.get("updated_at") == updated_at and updated_at:
             stats["skipped"] += 1
+            pending_skips += 1
             continue
+
+        if pending_skips:
+            print(f"  [{i}/{total}] skipped {pending_skips} (no change)")
+            pending_skips = 0
 
         try:
             doc = fetch_redmine_issue(item["id"])
@@ -452,6 +487,8 @@ def sync_redmine(client, doc_state: dict, section_state: dict) -> dict:
             print(f"  [error] {source_id}: {e}")
             stats["failed"] += 1
 
+    if pending_skips:
+        print(f"  [{total}/{total}] skipped {pending_skips} (no change)")
     print(f"  added={stats['added']} skipped={stats['skipped']} "
           f"updated_sections={stats['updated_sections']} skipped_sections={stats['skipped_sections']} "
           f"failed={stats['failed']}")

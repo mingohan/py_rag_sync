@@ -82,7 +82,10 @@ class GeminiVertexEmbedding(BaseEmbedding):
                         output_dimensionality=settings.embedding_dimensions,
                     ),
                 )
-                return [e.values for e in result.embeddings]
+                values = [e.values for e in result.embeddings]
+                if any(v is None for v in values):
+                    raise ValueError(f"Embedding API returned None for {sum(1 for v in values if v is None)}/{len(values)} texts")
+                return values
             except Exception as e:
                 if ("429" in str(e) or "Quota exceeded" in str(e) or "RESOURCE_EXHAUSTED" in str(e)) and attempt < 4:
                     wait = 60 * (attempt + 1)
@@ -132,7 +135,10 @@ class GeminiVertexEmbedding(BaseEmbedding):
                         output_dimensionality=settings.embedding_dimensions,
                     ),
                 )
-                return [e.values for e in result.embeddings]
+                values = [e.values for e in result.embeddings]
+                if any(v is None for v in values):
+                    raise ValueError(f"Embedding API returned None for {sum(1 for v in values if v is None)}/{len(values)} texts")
+                return values
             except Exception as e:
                 if "429" in str(e) or "Quota exceeded" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                     if attempt < 4:
