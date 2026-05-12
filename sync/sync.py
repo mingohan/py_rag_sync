@@ -596,6 +596,10 @@ def main():
     else:
         print("\n[Asana] ASANA_ACCESS_TOKEN not set, skipping")
 
+    if not tasks:
+        print("\n[sync] no sources configured, exiting")
+        return
+
     total_stats = {}
     with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
         futures = {
