@@ -94,6 +94,12 @@ class GeminiVertexEmbedding(BaseEmbedding):
                     print(f"  [Query Embedding] 429 limit hit. Waiting {wait}s before retry {attempt+1}/4...")
                     time.sleep(wait)
                     continue
+                if isinstance(e, ValueError) and len(texts) > 1:
+                    print(f"  [warn] _embed batch failed ({e}), retrying individually...")
+                    results = []
+                    for text in texts:
+                        results.extend(self._embed([text]))
+                    return results
                 raise
 
     def _get_query_embedding(self, query: str) -> List[float]:
