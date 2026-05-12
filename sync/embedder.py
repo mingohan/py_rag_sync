@@ -30,6 +30,19 @@ def _get_embedding_model():
     return _embedding_model
 
 
+def _embed_single(emb, sparse_model, node: Chunk) -> bool:
+    """Embed a single node in-place. Returns False if the API rejects the text."""
+    try:
+        node.embedding = emb._get_text_embedding(node.text)
+        sparse_result = list(sparse_model.embed([node.text]))[0]
+        node.metadata["sparse_indices"] = sparse_result.indices.tolist()
+        node.metadata["sparse_values"] = sparse_result.values.tolist()
+        return True
+    except Exception as e:
+        print(f"  [warn] skipping node {node.node_id}: single embed failed ({e})")
+        return False
+
+
 def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
     """
     Batch embed, producing both:
@@ -43,16 +56,17 @@ def embed_nodes(nodes: list[Chunk]) -> list[Chunk]:
         batch = nodes[i:i + BATCH_SIZE]
         texts = [n.text for n in batch]
 
-        dense_vecs = emb._get_text_embeddings(texts)
-        sparse_results = list(sparse_model.embed(texts))
-
-        if len(dense_vecs) != len(batch):
-            raise ValueError(f"embedding count mismatch: got {len(dense_vecs)}, expected {len(batch)}")
-
-        for node, dense, sparse in zip(batch, dense_vecs, sparse_results):
-            node.embedding = dense
-            node.metadata["sparse_indices"] = sparse.indices.tolist()
-            node.metadata["sparse_values"] = sparse.values.tolist()
+        try:
+            dense_vecs = emb._get_text_embeddings(texts)
+            sparse_results = list(sparse_model.embed(texts))
+            for node, dense, sparse in zip(batch, dense_vecs, sparse_results):
+                node.embedding = dense
+                node.metadata["sparse_indices"] = sparse.indices.tolist()
+                node.metadata["sparse_values"] = sparse.values.tolist()
+        except Exception as e:
+            print(f"  [warn] batch embed failed ({e}), retrying individually...")
+            for node in batch:
+                _embed_single(emb, sparse_model, node)
 
         print(f"  embedded {min(i + BATCH_SIZE, len(nodes))}/{len(nodes)} nodes")
 
