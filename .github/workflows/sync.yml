@@ -74,6 +74,8 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_SYNC_CHANNEL: ${{ secrets.SLACK_SYNC_CHANNEL }}
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_ACCESS_TOKEN }}
+          ASANA_PROJECT_IDS: ${{ secrets.ASANA_PROJECT_IDS }}
           PYTHONPATH: ${{ github.workspace }}
         working-directory: ${{ github.workspace }}
         run: python -m sync.sync
